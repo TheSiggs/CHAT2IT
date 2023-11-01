@@ -1,0 +1,20 @@
+# Test your FastAPI endpoints
+
+POST /create HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Length: 226
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="files"; filename="epdf.pub_the-intelligent-investor.pdf"
+Content-Type: <Content-Type header here>
+
+(data)
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+###
+
+POST /chat?session=6369cda3-cc43-4a20-9968-cf229d2b2585&query=Give me the most pragmatic lessioins in this book HTTP/1.1
+Host: 127.0.0.1:8000
+
+###

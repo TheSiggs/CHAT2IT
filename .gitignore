@@ -1,0 +1,4 @@
+.idea/
+sessions/
+!sessions/.gitkeep
+.env
