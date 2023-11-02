@@ -4,7 +4,7 @@ import uuid
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Union
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Form
 from langchain.chains.question_answering import load_qa_chain
 from langchain.llms.openai import OpenAI
 from langchain.text_splitter import CharacterTextSplitter
@@ -25,13 +25,11 @@ async def root():
 
 @app.post("/create")
 async def create_embedding(
-        files: Annotated[
-            list[Union[UploadFile]], File()
-        ],
+        files: Annotated[list[Union[UploadFile]], File()] = '',
+        text: Annotated[str, Form()] = '',
 ):
     context = ''
     for file in files:
-        print(file.filename)
         if file.filename.endswith('.pdf'):
             with NamedTemporaryFile(delete=True, suffix=".pdf") as temp_file:
                 shutil.copyfileobj(file.file, temp_file)
@@ -45,7 +43,12 @@ async def create_embedding(
                 context += (read_word(temp_file.name))
         else:
             continue
-
+    context += text
+    if len(context) == 0:
+        return {
+            "result": None,
+            "error": "No valid context"
+        }
     session = uuid.uuid4()  # Create strongly hashed session
     location = f"{os.getenv('SESSION_STORAGE')}/{session}"
     char_text_splitter = CharacterTextSplitter(separator="\n", chunk_size=1000,
@@ -54,8 +57,10 @@ async def create_embedding(
     embeddings = OpenAIEmbeddings()
     docsearch = FAISS.from_texts(text_chunks, embeddings)
     docsearch.save_local(location)
-    return session
-
+    return {
+            "result": session,
+            "error": None
+        }
 
 @app.post("/chat")
 def query_embedding(session: str, query: str):

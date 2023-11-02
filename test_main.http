@@ -18,3 +18,14 @@ POST /chat?session=6369cda3-cc43-4a20-9968-cf229d2b2585&query=Give me the most p
 Host: 127.0.0.1:8000
 
 ###
+
+POST /create HTTP/1.1
+Host: 127.0.0.1:8000
+Content-Length: 151
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="text"
+
+Hello this is some text
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
