@@ -17,33 +17,48 @@ load_dotenv()
 
 app = FastAPI()
 
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-
-@app.post("/create")
-async def create_embedding(
-        files: Annotated[list[Union[UploadFile]], File()] = '',
-        text: Annotated[str, Form()] = '',
+@app.post("/parseFiles")
+async def create_embedding_files(
+        context: Annotated[list[Union[UploadFile]], File()],
 ):
-    context = ''
-    for file in files:
+    strinput = ''
+    for file in context:
         if file.filename.endswith('.pdf'):
             with NamedTemporaryFile(delete=True, suffix=".pdf") as temp_file:
                 shutil.copyfileobj(file.file, temp_file)
-                context += (read_pdf(temp_file.name))
+                strinput += (read_pdf(temp_file.name))
         elif file.filename.endswith('.txt'):
             contents = await file.read()
-            context += contents.decode('utf-8')
+            strinput += contents.decode('utf-8')
         elif file.filename.endswith('.docx'):
             with NamedTemporaryFile(delete=True, suffix=".docx") as temp_file:
                 shutil.copyfileobj(file.file, temp_file)
-                context += (read_word(temp_file.name))
+                strinput += (read_word(temp_file.name))
         else:
             continue
-    context += text
+    if len(strinput) == 0:
+        return {
+            "result": None,
+            "error": "No valid context"
+        }
+    session = uuid.uuid4()  # Create strongly hashed session
+    location = f"{os.getenv('SESSION_STORAGE')}/{session}"
+    char_text_splitter = CharacterTextSplitter(separator="\n", chunk_size=1000,
+                                               chunk_overlap=200, length_function=len)
+    text_chunks = char_text_splitter.split_text(strinput)
+    embeddings = OpenAIEmbeddings()
+    docsearch = FAISS.from_texts(text_chunks, embeddings)
+    docsearch.save_local(location)
+    return {
+            "result": session,
+            "error": None
+        }
+
+
+@app.post("/parseText")
+async def create_embedding_text(
+        context: str,
+):
     if len(context) == 0:
         return {
             "result": None,
@@ -62,18 +77,16 @@ async def create_embedding(
             "error": None
         }
 
+
 @app.post("/chat")
 def query_embedding(session: str, query: str):
     location = f"{os.getenv('SESSION_STORAGE')}/{session}"
-    # create embeddings
     embeddings = OpenAIEmbeddings()
     docsearch = FAISS.load_local(location, embeddings)
-
     llm = OpenAI()
     chain = load_qa_chain(llm, chain_type="stuff")
-
     docs = docsearch.similarity_search(query)
-    return chain.run(input_documents=docs, question=query)
+    return chain.run(input_documents=docs, question=query).strip()
 
 
 def read_pdf(file_path):
