@@ -1,8 +1,6 @@
 import uuid
-
 from sqlalchemy.orm import Session
 from src.Entity.Session import Session as SessionEmbedding
-from src.Schema.Session.SessionCreate import SessionCreate
 
 def get_session(db: Session, session_id: int):
     return db.query(SessionEmbedding).filter(SessionEmbedding.id == session_id).first()

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from jose import jwt
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session

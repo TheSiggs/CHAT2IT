@@ -2,8 +2,6 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from src.Database.Database import Base
-from src.Entity import AuthToken, Session
-
 
 class User(Base):
     __tablename__ = "users"

@@ -1,5 +1,4 @@
 from sqlalchemy.orm import Session
-
 from src.Entity.User import User
 from src.Repository.AuthTokenRepository import get_auth_token
 

@@ -14,13 +14,11 @@ from PyPDF2 import PdfReader
 import docx
 from src.Database.Database import SessionLocal, Base, engine
 from src.Entity.Session import Session
-from src.Entity.User import User as UserModel
 from src.Repository import UserRepository, AuthTokenRepository, SessionRepository
 from src.Repository.SessionRepository import get_session_by_session_id
 from src.Repository.UserRepository import get_user_by_auth_token
 from src.Schema.AuthToken.AuthToken import AuthToken as AuthTokenSchema
 from src.Schema.User.User import User as UserSchema
-from src.Schema.Session.Session import Session as SessionSchema
 from fastapi.responses import JSONResponse
 
 Base.metadata.create_all(bind=engine)
