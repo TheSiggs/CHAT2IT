@@ -129,10 +129,10 @@ async def create_embedding_text(
 
 @app.post("/chat")
 async def query_embedding(
-    session: str,
-    query: str,
-    user_id: str,
-    db: Session = Depends(get_db)
+        session: str,
+        query: str,
+        user_id: str,
+        db: Session = Depends(get_db)
 ):
     user = get_user_by_auth_token(db=db, auth_token=user_id)
     if user is None:
@@ -156,7 +156,6 @@ async def query_embedding(
             "error": "No valid context"
         }
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=content)
-
 
     location = f"{os.getenv('SESSION_STORAGE')}/{session.session_id}"
     embeddings = OpenAIEmbeddings()
@@ -190,25 +189,33 @@ def read_word(file_path):
 
 @app.post("/create_user", response_model=UserSchema)
 async def create_user(api_token: str, db: Session = Depends(get_db)):
-    if api_token == os.getenv('SECRET_KEY'):
-        user = UserRepository.create_user(db=db)
-        return JSONResponse(status_code=status.HTTP_200_OK, content=user)
-    else:
+    if api_token != os.getenv('SECRET_KEY'):
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
-
+    user = UserRepository.create_user(db=db)
+    content = {
+        "id": user.id,
+        "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "updated_at": user.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    return JSONResponse(status_code=status.HTTP_200_OK, content=content)
 
 
 @app.post("/users/generate_token", response_model=AuthTokenSchema)
 async def generate_token(
-    user_id: int,
-    api_token: str,
-    db: Session = Depends(get_db)
+        user_id: int,
+        api_token: str,
+        db: Session = Depends(get_db)
 ):
-    if api_token == os.getenv('SECRET_KEY'):
-        user = AuthTokenRepository.create_auth_token(db=db, user_id=user_id)
-        return JSONResponse(status_code=status.HTTP_200_OK, content=user)
-    else:
+    if api_token != os.getenv('SECRET_KEY'):
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
 
+    user = AuthTokenRepository.create_auth_token(db=db, user_id=user_id)
+    if user is None:
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content="No user found")
 
-
+    content = {
+        "token": user.value,
+        "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "updated_at": user.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    return JSONResponse(status_code=status.HTTP_200_OK, content=content)
