@@ -4,7 +4,7 @@ import uuid
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Union
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile, Depends
+from fastapi import FastAPI, File, UploadFile, Depends, status
 from langchain.chains.question_answering import load_qa_chain
 from langchain.llms.openai import OpenAI
 from langchain.text_splitter import CharacterTextSplitter
@@ -16,9 +16,12 @@ from src.Database.Database import SessionLocal, Base, engine
 from src.Entity.Session import Session
 from src.Entity.User import User as UserModel
 from src.Repository import UserRepository, AuthTokenRepository, SessionRepository
+from src.Repository.SessionRepository import get_session_by_session_id
+from src.Repository.UserRepository import get_user_by_auth_token
 from src.Schema.AuthToken.AuthToken import AuthToken as AuthTokenSchema
 from src.Schema.User.User import User as UserSchema
 from src.Schema.Session.Session import Session as SessionSchema
+from fastapi.responses import JSONResponse
 
 Base.metadata.create_all(bind=engine)
 
@@ -43,6 +46,13 @@ async def create_embedding_files(
         user_id: str,
         db: Session = Depends(get_db)
 ):
+    user = get_user_by_auth_token(db=db, auth_token=user_id)
+    if user is None:
+        content = {
+            "result": None,
+            "error": "Invalid authentication token"
+        }
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=content)
     strinput = ''
     for file in context:
         if file.filename.endswith('.pdf'):
@@ -58,11 +68,12 @@ async def create_embedding_files(
                 strinput += (read_word(temp_file.name))
         else:
             continue
-    if len(strinput) == 0:
-        return {
+    if len(context.strip()) == 0:
+        content = {
             "result": None,
             "error": "No valid context"
         }
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=content)
     session = uuid.uuid4()  # Create strongly hashed session
     location = f"{os.getenv('SESSION_STORAGE')}/{session}"
     char_text_splitter = CharacterTextSplitter(separator="\n", chunk_size=1000,
@@ -72,10 +83,11 @@ async def create_embedding_files(
     docsearch = FAISS.from_texts(text_chunks, embeddings)
     docsearch.save_local(location)
     SessionRepository.create_session(db=db, user_id=user_id, session_id=session)
-    return {
-        "result": session,
+    content = {
+        "result": str(session),
         "error": None
     }
+    return JSONResponse(status_code=status.HTTP_200_OK, content=content)
 
 
 @app.post("/parseText")
@@ -84,13 +96,22 @@ async def create_embedding_text(
         user_id: str,
         db: Session = Depends(get_db)
 ):
-    print('boobs')
-    if len(context) == 0:
-        return {
+    user = get_user_by_auth_token(db=db, auth_token=user_id)
+    if user is None:
+        content = {
+            "result": None,
+            "error": "Invalid authentication token"
+        }
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=content)
+
+    if len(context.strip()) == 0:
+        content = {
             "result": None,
             "error": "No valid context"
         }
-    session = uuid.uuid4()  # Create strongly hashed session
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=content)
+
+    session = uuid.uuid4()
     location = f"{os.getenv('SESSION_STORAGE')}/{session}"
     char_text_splitter = CharacterTextSplitter(separator="\n", chunk_size=1000,
                                                chunk_overlap=200, length_function=len)
@@ -98,22 +119,56 @@ async def create_embedding_text(
     embeddings = OpenAIEmbeddings()
     docsearch = FAISS.from_texts(text_chunks, embeddings)
     docsearch.save_local(location)
-    SessionRepository.create_session(db=db, user_id=user_id, session_id=session)
-    return {
-        "result": session,
+    SessionRepository.create_session(db=db, user_id=user.id, session_id=session)
+    content = {
+        "result": str(session),
         "error": None
     }
+    return JSONResponse(status_code=status.HTTP_200_OK, content=content)
 
 
 @app.post("/chat")
-def query_embedding(session: str, query: str):
-    location = f"{os.getenv('SESSION_STORAGE')}/{session}"
+async def query_embedding(
+    session: str,
+    query: str,
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    user = get_user_by_auth_token(db=db, auth_token=user_id)
+    if user is None:
+        content = {
+            "result": None,
+            "error": "Invalid authentication token"
+        }
+        return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=content)
+
+    session = get_session_by_session_id(db=db, session_id=session)
+    if session is None:
+        content = {
+            "result": None,
+            "error": "Invalid session"
+        }
+        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=content)
+
+    if len(query.strip()) == 0:
+        content = {
+            "result": None,
+            "error": "No valid context"
+        }
+        return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=content)
+
+
+    location = f"{os.getenv('SESSION_STORAGE')}/{session.session_id}"
     embeddings = OpenAIEmbeddings()
     docsearch = FAISS.load_local(location, embeddings)
     llm = OpenAI()
     chain = load_qa_chain(llm, chain_type="stuff")
     docs = docsearch.similarity_search(query)
-    return chain.run(input_documents=docs, question=query).strip()
+    content = {
+        "result": chain.run(input_documents=docs, question=query).strip(),
+        "error": None
+    }
+    return JSONResponse(status_code=status.HTTP_200_OK, content=content)
 
 
 def read_pdf(file_path):
@@ -134,12 +189,12 @@ def read_word(file_path):
 
 
 @app.post("/create_user", response_model=UserSchema)
-def create_user(db: Session = Depends(get_db)):
+async def create_user(db: Session = Depends(get_db)):
     return UserRepository.create_user(db=db)
 
 
 @app.post("/users/generate_token", response_model=AuthTokenSchema)
-def generate_token(
+async def generate_token(
     user_id: int,
     db: Session = Depends(get_db)
 ):

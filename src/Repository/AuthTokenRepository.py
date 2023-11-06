@@ -8,9 +8,8 @@ from src.Entity.AuthToken import AuthToken
 load_dotenv()
 
 
-def get_auth_token(db: Session, user_id: int):
-    return db.query(AuthToken).filter(AuthToken.id == user_id).first()
-
+def get_auth_token(db: Session, auth_token: str):
+    return db.query(AuthToken).filter(AuthToken.value == auth_token).first()
 
 def get_auth_token_by_user(db: Session, user_id: int):
     return db.query(AuthToken).filter(AuthToken.user_id == user_id).all()
