@@ -4,7 +4,7 @@ from jose import jwt
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from src.Entity.AuthToken import AuthToken
-from src.Repository.UserRepository import get_user
+from src.Repository import UserRepository
 
 load_dotenv()
 
@@ -21,7 +21,7 @@ def get_auth_tokens(db: Session, skip: int = 0, limit: int = 100):
 
 
 def create_auth_token(db: Session, user_id: int):
-    user = get_user(db=db, user_id=user_id)
+    user = UserRepository.get_user(db=db, user_id=user_id)
     if user:
         db_item = AuthToken(user_id=user_id, value=create_access_token())
         db.add(db_item)
