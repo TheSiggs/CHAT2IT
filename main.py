@@ -68,7 +68,7 @@ async def create_embedding_files(
                 strinput += (read_word(temp_file.name))
         else:
             continue
-    if len(context.strip()) == 0:
+    if len(strinput.strip()) == 0:
         content = {
             "result": None,
             "error": "No valid context"
