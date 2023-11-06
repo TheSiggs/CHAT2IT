@@ -189,15 +189,26 @@ def read_word(file_path):
 
 
 @app.post("/create_user", response_model=UserSchema)
-async def create_user(db: Session = Depends(get_db)):
-    return UserRepository.create_user(db=db)
+async def create_user(api_token: str, db: Session = Depends(get_db)):
+    if api_token == os.getenv('SECRET_KEY'):
+        user = UserRepository.create_user(db=db)
+        return JSONResponse(status_code=status.HTTP_200_OK, content=user)
+    else:
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
+
 
 
 @app.post("/users/generate_token", response_model=AuthTokenSchema)
 async def generate_token(
     user_id: int,
+    api_token: str,
     db: Session = Depends(get_db)
 ):
-    return AuthTokenRepository.create_auth_token(db=db, user_id=user_id)
+    if api_token == os.getenv('SECRET_KEY'):
+        user = AuthTokenRepository.create_auth_token(db=db, user_id=user_id)
+        return JSONResponse(status_code=status.HTTP_200_OK, content=user)
+    else:
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
+
 
 
