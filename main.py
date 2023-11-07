@@ -4,7 +4,7 @@ import uuid
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Union
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile, Depends, status
+from fastapi import FastAPI, File, UploadFile, Depends, status, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from langchain.chains.question_answering import load_qa_chain
 from langchain.llms.openai import OpenAI
@@ -207,22 +207,22 @@ async def generate_token(
         token: Annotated[str, Depends(oauth2_scheme)],
         user_id: int = -1,
         db: Session = Depends(get_db)
-):
-    if token == os.getenv('SECRET_KEY') or get_user_by_auth_token(db=db, auth_token=token):
-        if token == os.getenv('SECRET_KEY'):
-            user = AuthTokenRepository.create_auth_token(db=db, user_id=user_id)
-        else:
-            testUser = get_user_by_auth_token(db=db, auth_token=token)
-            if testUser and (testUser.id == user_id or user_id == -1):
-                user = AuthTokenRepository.create_auth_token(db=db, user_id=testUser.id)
-            else:
-                return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
+) -> JSONResponse:
+    is_secret_key = token == os.getenv('SECRET_KEY')
+    user_from_db = None if is_secret_key else get_user_by_auth_token(db=db, auth_token=token)
 
-        if user is None:
-            return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content="No user found")
+    if not is_secret_key and not user_from_db:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not Authorized")
+
+    if is_secret_key or (user_from_db and (user_from_db.id == user_id or user_id == -1)):
+        new_user_id = user_id if is_secret_key else user_from_db.id
+        new_token = AuthTokenRepository.create_auth_token(db=db, user_id=new_user_id)
+        if new_token is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No user found")
+
         content = {
-            "token": user.value,
-            "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "token": new_token.value,
+            "created_at": new_token.created_at.strftime("%Y-%m-%d %H:%M:%S"),
         }
         return JSONResponse(status_code=status.HTTP_200_OK, content=content)
-    return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not Authorized")
