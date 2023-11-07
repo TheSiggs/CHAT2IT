@@ -5,6 +5,7 @@ from tempfile import NamedTemporaryFile
 from typing import Annotated, Union
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Depends, status
+from fastapi.security import OAuth2PasswordBearer
 from langchain.chains.question_answering import load_qa_chain
 from langchain.llms.openai import OpenAI
 from langchain.text_splitter import CharacterTextSplitter
@@ -22,6 +23,8 @@ from src.Schema.User.User import User as UserSchema
 from fastapi.responses import JSONResponse
 
 Base.metadata.create_all(bind=engine)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl='')
 
 
 # Dependency
@@ -41,10 +44,10 @@ app = FastAPI()
 @app.post("/parseFiles")
 async def create_embedding_files(
         context: Annotated[list[Union[UploadFile]], File()],
-        user_id: str,
+        token: Annotated[str, Depends(oauth2_scheme)],
         db: Session = Depends(get_db)
 ):
-    user = get_user_by_auth_token(db=db, auth_token=user_id)
+    user = get_user_by_auth_token(db=db, auth_token=token)
     if user is None:
         content = {
             "result": None,
@@ -80,7 +83,7 @@ async def create_embedding_files(
     embeddings = OpenAIEmbeddings()
     docsearch = FAISS.from_texts(text_chunks, embeddings)
     docsearch.save_local(location)
-    SessionRepository.create_session(db=db, user_id=user_id, session_id=session)
+    SessionRepository.create_session(db=db, user_id=user.id, session_id=session)
     content = {
         "result": str(session),
         "error": None
@@ -91,10 +94,10 @@ async def create_embedding_files(
 @app.post("/parseText")
 async def create_embedding_text(
         context: str,
-        user_id: str,
+        token: Annotated[str, Depends(oauth2_scheme)],
         db: Session = Depends(get_db)
 ):
-    user = get_user_by_auth_token(db=db, auth_token=user_id)
+    user = get_user_by_auth_token(db=db, auth_token=token)
     if user is None:
         content = {
             "result": None,
@@ -129,10 +132,10 @@ async def create_embedding_text(
 async def query_embedding(
         session: str,
         query: str,
-        user_id: str,
+        token: Annotated[str, Depends(oauth2_scheme)],
         db: Session = Depends(get_db)
 ):
-    user = get_user_by_auth_token(db=db, auth_token=user_id)
+    user = get_user_by_auth_token(db=db, auth_token=token)
     if user is None:
         content = {
             "result": None,
@@ -141,7 +144,8 @@ async def query_embedding(
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content=content)
 
     session = get_session_by_session_id(db=db, session_id=session)
-    if session is None:
+    location = f"{os.getenv('SESSION_STORAGE')}/{session.session_id}"
+    if session is None or os.path.exists(location) is False:
         content = {
             "result": None,
             "error": "Invalid session"
@@ -155,7 +159,6 @@ async def query_embedding(
         }
         return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=content)
 
-    location = f"{os.getenv('SESSION_STORAGE')}/{session.session_id}"
     embeddings = OpenAIEmbeddings()
     docsearch = FAISS.load_local(location, embeddings)
     llm = OpenAI()
@@ -186,26 +189,31 @@ def read_word(file_path):
 
 
 @app.post("/create_user", response_model=UserSchema)
-async def create_user(api_token: str, db: Session = Depends(get_db)):
-    if api_token != os.getenv('SECRET_KEY'):
+async def create_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
+    if token != os.getenv('SECRET_KEY'):
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
     user = UserRepository.create_user(db=db)
+    userToken = AuthTokenRepository.create_auth_token(db=db, user_id=user.id)
     content = {
         "id": user.id,
+        "token": userToken.value,
         "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        "updated_at": user.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
     }
     return JSONResponse(status_code=status.HTTP_200_OK, content=content)
 
 
 @app.post("/users/generate_token", response_model=AuthTokenSchema)
 async def generate_token(
-        user_id: int,
-        api_token: str,
+        token: Annotated[str, Depends(oauth2_scheme)],
+        user_id: int = -1,
         db: Session = Depends(get_db)
 ):
-    if api_token != os.getenv('SECRET_KEY'):
+    testUser = get_user_by_auth_token(db=db, auth_token=token)
+    if token != os.getenv('SECRET_KEY') and testUser is None:
         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
+
+    if user_id == -1:
+        user_id = testUser.id
 
     user = AuthTokenRepository.create_auth_token(db=db, user_id=user_id)
     if user is None:
@@ -214,6 +222,5 @@ async def generate_token(
     content = {
         "token": user.value,
         "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        "updated_at": user.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
     }
     return JSONResponse(status_code=status.HTTP_200_OK, content=content)
