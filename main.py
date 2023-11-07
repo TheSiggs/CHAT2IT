@@ -208,19 +208,21 @@ async def generate_token(
         user_id: int = -1,
         db: Session = Depends(get_db)
 ):
-    testUser = get_user_by_auth_token(db=db, auth_token=token)
-    if token != os.getenv('SECRET_KEY') and testUser is None:
-        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
+    if token == os.getenv('SECRET_KEY') or get_user_by_auth_token(db=db, auth_token=token):
+        if token == os.getenv('SECRET_KEY'):
+            user = AuthTokenRepository.create_auth_token(db=db, user_id=user_id)
+        else:
+            testUser = get_user_by_auth_token(db=db, auth_token=token)
+            if testUser and (testUser.id == user_id or user_id == -1):
+                user = AuthTokenRepository.create_auth_token(db=db, user_id=testUser.id)
+            else:
+                return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
 
-    if user_id == -1:
-        user_id = testUser.id
-
-    user = AuthTokenRepository.create_auth_token(db=db, user_id=user_id)
-    if user is None:
-        return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content="No user found")
-
-    content = {
-        "token": user.value,
-        "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-    }
-    return JSONResponse(status_code=status.HTTP_200_OK, content=content)
+        if user is None:
+            return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content="No user found")
+        content = {
+            "token": user.value,
+            "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        return JSONResponse(status_code=status.HTTP_200_OK, content=content)
+    return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content="Not Authorized")
